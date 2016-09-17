@@ -1,0 +1,62 @@
+#!/bin/bash
+
+set -euxo pipefail
+
+if [ -z "${SYNCTHING_UID:-}" ]; then
+    echo "SYNCTHING_UID is not set."
+    exit 1
+fi
+
+# Create the syncthing user with specified UID if the user doesn't
+# exist. Usually this would be used to map the container's syncthing
+# user onto a specific existing user on the host machine (who owns the
+# syncthing config).
+if ! id -u syncthing; then
+    useradd -u $SYNCTHING_UID syncthing
+    mkdir -p /home/syncthing/.config/syncthing
+    mkdir -p /home/syncthing/sync
+    chown syncthing: /home/syncthing
+    chown syncthing: /home/syncthing/.config
+    chown -R syncthing: /home/syncthing/.config/syncthing
+    chown -R syncthing: /home/syncthing/sync
+fi
+
+# Ensure that the UID of the syncthing user is as requested.
+if [ "$(id -u syncthing)" != $SYNCTHING_UID ]; then
+    echo "syncthing user already exists with incorrect UID $(id -u syncthing)"
+    exit 1
+fi
+
+# Generate config if it's not present.
+if [ ! -e /home/syncthing/.config/syncthing/config.xml ]; then
+    su - syncthing -c "/usr/bin/syncthing -generate /home/syncthing/.config/syncthing"
+
+    # listen on all addrs, rely on docker/host for access control
+    sed -i -e 's|<listenAddress>.*</listenAddress>|<listenAddress>tcp://:22000</listenAddress>|' /home/syncthing/.config/syncthing/config.xml
+
+    # FIXME: set user/password for GUI
+    # listen on all addrs also for GUI
+    awk '/<gui /   { in_gui = 1 }
+         /<\/gui>/ { in_gui = 0 }
+         in_gui    { gsub(/<address>.*<\/address>/,"<address>:8384</address>"); print }
+         !in_gui   { print }' \
+         /home/syncthing/.config/syncthing/config.xml \
+         > config.xml.awked
+    # don't mv, we want to preserve ownership/permissions
+    cat config.xml.awked > /home/syncthing/.config/syncthing/config.xml
+    rm config.xml.awked
+
+    # locked down settings by default
+    sed -i -e 's|<globalAnnounceEnabled>.*</globalAnnounceEnabled>|<globalAnnounceEnabled>false</globalAnnounceEnabled>|' /home/syncthing/.config/syncthing/config.xml
+    sed -i -e 's|<localAnnounceEnabled>.*</localAnnounceEnabled>|<localAnnounceEnabled>false</localAnnounceEnabled>|' /home/syncthing/.config/syncthing/config.xml
+    sed -i -e 's|<natEnabled>.*</natEnabled>|<natEnabled>false</natEnabled>|' /home/syncthing/.config/syncthing/config.xml
+    sed -i -e 's|<relaysEnabled>.*</relaysEnabled>|<relaysEnabled>false</relaysEnabled>|' /home/syncthing/.config/syncthing/config.xml
+    sed -i -e 's|<urAccepted>.*</urAccepted>|<urAccepted>-1</urAccepted>|' /home/syncthing/.config/syncthing/config.xml
+    sed -i -e 's|<autoUpgradeIntervalH>.*</autoUpgradeIntervalH>|<autoUpgradeIntervalH>0</autoUpgradeIntervalH>|' /home/syncthing/.config/syncthing/config.xml
+
+    # sane settings for server environment
+    sed -i -e 's|<startBrowser>.*</startBrowser>|<startBrowser>false</startBrowser>|' /home/syncthing/.config/syncthing/config.xml
+    sed -i -e 's|<minHomeDiskFreePct>.*</minHomeDiskFreePct>|<minHomeDiskFreePct>20</minHomeDiskFreePct>|' /home/syncthing/.config/syncthing/config.xml
+fi
+
+exec su - syncthing -c /usr/bin/syncthing
