@@ -29,12 +29,19 @@ fi
 
 # Generate config if it's not present.
 if [ ! -e /home/syncthing/.config/syncthing/config.xml ]; then
+    if [ -z "${SYNCTHING_ADMIN_PASSWORD:-}" -a -z "${SYNCTHING_ADMIN_PASSWORD_BCRYPT:-}" ]; then
+        echo "When starting syncthing without existing config, SYNCTHING_ADMIN_PASSWORD or SYNCTHING_ADMIN_PASSWORD_BCRYPT must be set."
+        exit 1
+    fi
+    if [ -z "${SYNCTHING_ADMIN_PASSWORD_BCRYPT:-}" ]; then
+        SYNCTHING_ADMIN_PASSWORD_BCRYPT=$(python -c "import bcrypt; print(bcrypt.hashpw('$SYNCTHING_ADMIN_PASSWORD', bcrypt.gensalt(log_rounds=10)))")
+    fi
+
     su - syncthing -c "/usr/bin/syncthing -generate /home/syncthing/.config/syncthing"
 
     # listen on all addrs, rely on docker/host for access control
     sed -i -e 's|<listenAddress>.*</listenAddress>|<listenAddress>tcp://:22000</listenAddress>|' /home/syncthing/.config/syncthing/config.xml
 
-    # FIXME: set user/password for GUI
     # listen on all addrs also for GUI
     awk '/<gui /   { in_gui = 1 }
          /<\/gui>/ { in_gui = 0 }
@@ -45,6 +52,12 @@ if [ ! -e /home/syncthing/.config/syncthing/config.xml ]; then
     # don't mv, we want to preserve ownership/permissions
     cat config.xml.awked > /home/syncthing/.config/syncthing/config.xml
     rm config.xml.awked
+
+    # set user/password for GUI
+    sed -i -re "s|^( *)</gui>|\1    <user>${SYNCTHING_ADMIN_USER:-admin}</user>\n\1    <password>$SYNCTHING_ADMIN_PASSWORD_BCRYPT</password>\n\1</gui>|" /home/syncthing/.config/syncthing/config.xml
+
+    # set TLS enforcing (defaults to true)
+    sed -i -re "s|(<gui .*) tls=\"false\"|\1 tls=\"${SYNCTHING_ADMIN_TLS:-true}\"|" /home/syncthing/.config/syncthing/config.xml
 
     # locked down settings by default
     sed -i -e 's|<globalAnnounceEnabled>.*</globalAnnounceEnabled>|<globalAnnounceEnabled>false</globalAnnounceEnabled>|' /home/syncthing/.config/syncthing/config.xml

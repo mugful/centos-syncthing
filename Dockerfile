@@ -22,6 +22,7 @@ COPY files /
 
 VOLUME ["/home/syncthing/.config/syncthing", "/home/syncthing/sync"]
 EXPOSE 8384
+EXPOSE 21027/udp
 EXPOSE 22000
 
 CMD ["/usr/local/bin/container_syncthing"]
