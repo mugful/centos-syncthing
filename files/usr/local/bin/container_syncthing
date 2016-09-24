@@ -54,6 +54,8 @@ if [ ! -e /home/syncthing/.config/syncthing/config.xml ]; then
     rm config.xml.awked
 
     # set user/password for GUI
+    # FIXME: escaping would be nice, as currently pipe character
+    # cannot appear in the password
     sed -i -re "s|^( *)</gui>|\1    <user>${SYNCTHING_ADMIN_USER:-admin}</user>\n\1    <password>$SYNCTHING_ADMIN_PASSWORD_BCRYPT</password>\n\1</gui>|" /home/syncthing/.config/syncthing/config.xml
 
     # set TLS enforcing (defaults to true)
