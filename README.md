@@ -72,8 +72,8 @@ To mount config and data directories and ensure matching UIDs, you
 could add something like this to your `docker run` command:
 
     -e SYNCTHING_UID=$(id -u myuser) \
-    -v /home/myuser/.config/syncthing:/home/syncthing/.config/syncthing \
-    -v /home/myuser/my_shared_data:/home/syncthing/sync \
+    -v /home/myuser/.config/syncthing:/home/syncthing/.config/syncthing:z \
+    -v /home/myuser/my_shared_data:/home/syncthing/sync:z \
 
 Run - config generation options
 -------------------------------
